@@ -6,7 +6,10 @@
   <title>&#8203;</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; }
+    html, body {
+      height: 100%;
+      min-height: 100%;
+    }
     body {
       background: #05070c;
       display: flex;
@@ -53,6 +56,67 @@
       color: #c8d0e0;
       border-radius: 4px;
     }
+    #bar.is-hidden { display: none; }
+    .toolbar-mat {
+      display: none;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem 1.25rem;
+      padding: 0.45rem 0.65rem;
+      width: 100%;
+      background: #0c1018;
+      border-bottom: 1px solid #1a2233;
+    }
+    .toolbar-mat.visible { display: flex; }
+    .toolbar-mat label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      color: #a8b4c8;
+      font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+    }
+    .toolbar-mat input[type="range"] {
+      width: min(72vw, 320px);
+      accent-color: #4dd4ff;
+    }
+    .toolbar-mat output {
+      font-variant-numeric: tabular-nums;
+      min-width: 10rem;
+      color: #7ec8ff;
+    }
+    .toolbar-mat output.is-hidden { display: none; }
+    .toolbar-mat input[type="range"]:disabled {
+      opacity: 0.85;
+      cursor: default;
+    }
+    .panel {
+      display: none;
+      flex: 1 1 0;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel.active { display: flex; }
+    #wrap2d {
+      flex: 1;
+      min-height: 0;
+      padding: 0.5rem;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+    }
+    #c2d {
+      width: 100%;
+      max-width: min(960px, 100%);
+      height: min(78vh, 640px);
+      background: #080b12;
+      border: 1px solid #1e2838;
+      border-radius: 8px;
+      touch-action: none;
+    }
     #canvas-wrap {
       flex: 1;
       min-height: 0;
@@ -76,7 +140,25 @@
     <input type="range" id="thetaSlider" min="0" max="25.132741228718345" step="0.001" value="0" title="">
     <input type="number" id="thetaNum" step="0.0001" value="0" title="">
   </div>
-  <div id="canvas-wrap"></div>
+
+  <div class="toolbar-mat" id="toolbarMat" aria-label="Step 2 — material">
+    <label>
+      x
+      <input type="range" id="xvMat" min="0" max="10000" value="0" step="1" disabled aria-label="x driven by time">
+      <output id="xvMatOut" for="xvMat" class="is-hidden"></output>
+      <output id="rgbMatOut" for="xvMat"></output>
+    </label>
+  </div>
+
+  <section id="panel1" class="panel active" aria-label="Step 1 — 2D">
+    <div id="wrap2d">
+      <canvas id="c2d" width="800" height="520" aria-label="sin — unit circle and wave (2D)"></canvas>
+    </div>
+  </section>
+
+  <section id="panel2" class="panel" aria-label="Step 2 — 3D material">
+    <div id="canvas-wrap"></div>
+  </section>
 
   <script type="importmap">
   {
@@ -97,185 +179,294 @@
     const MODE_WAVE = 1;
     const MODE_BOTH = 2;
 
+    let currentStep = 1;
+
+    function parseStep() {
+      const raw = (location.hash || '#step-1').replace(/^#/, '').toLowerCase();
+      if (raw === '2' || raw === 'step2' || raw === 'step-2') return 2;
+      return 1;
+    }
+
+    function applyRoute() {
+      if (!location.hash) {
+        history.replaceState(null, '', '#step-1');
+      }
+      currentStep = parseStep();
+      document.getElementById('panel1').classList.toggle('active', currentStep === 1);
+      document.getElementById('panel2').classList.toggle('active', currentStep === 2);
+      document.getElementById('bar').classList.toggle('is-hidden', currentStep !== 1);
+      document.getElementById('toolbarMat').classList.toggle('visible', currentStep === 2);
+      if (currentStep === 1) {
+        resize2d();
+      } else if (currentStep === 2) {
+        matTimeOrigin = performance.now();
+        initMaterialDemo();
+        syncRgbMaterial();
+        requestAnimationFrame(() => {
+          resizeMaterial();
+          requestAnimationFrame(() => resizeMaterial());
+        });
+      }
+    }
+
+    window.addEventListener('hashchange', applyRoute);
+
     const elRadios = document.querySelectorAll('input[name="mode"]');
     const elAuto = document.getElementById('auto');
     const elSlider = document.getElementById('thetaSlider');
     const elNum = document.getElementById('thetaNum');
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x05070c);
-    scene.fog = new THREE.FogExp2(0x05070c, 0.028);
-
-    const camera = new THREE.PerspectiveCamera(42, 2, 0.1, 200);
-    camera.position.set(6.2, 4.2, 9);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const c2d = document.getElementById('c2d');
+    const ctx2d = c2d.getContext('2d');
 
     const canvasWrap = document.getElementById('canvas-wrap');
-    canvasWrap.appendChild(renderer.domElement);
+    const xvMat = document.getElementById('xvMat');
+    const rgbMatOut = document.getElementById('rgbMatOut');
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.target.set(1.2, 0.8, 0);
+    /** 明るさ 0↔1 の1周（暗→明→暗）の所要時間 */
+    const MAT_RANGE = 10000;
+    const MAT_PERIOD_MS = 10000;
+    let matTimeOrigin = 0;
 
-    scene.add(new THREE.AmbientLight(0x334466, 0.45));
-    const sun = new THREE.DirectionalLight(0xffffff, 1);
-    sun.position.set(8, 14, 10);
-    scene.add(sun);
-    scene.add(new THREE.HemisphereLight(0x6688cc, 0x221100, 0.35));
-
-    const grid = new THREE.GridHelper(24, 48, 0x1c2840, 0x0f1522);
-    scene.add(grid);
-
-    const R = 2.2;
-    const cx = 0;
-    const cz = 0;
-    const waveXScale = 0.65;
-
-    const circleGeo = new THREE.RingGeometry(R - 0.02, R + 0.02, 128);
-    const circleMat = new THREE.MeshBasicMaterial({
-      color: 0x3a5a80,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.85
-    });
-    const circleMesh = new THREE.Mesh(circleGeo, circleMat);
-    circleMesh.rotation.x = -Math.PI / 2;
-    circleMesh.position.set(cx, 0.02, cz);
-    scene.add(circleMesh);
-
-    const axes = new THREE.AxesHelper(R * 1.25);
-    axes.position.set(cx, 0.06, cz);
-    scene.add(axes);
-
-    const radiusGeo = new THREE.BufferGeometry();
-    const radiusMat = new THREE.LineBasicMaterial({ color: 0x8899aa });
-    const radiusLine = new THREE.Line(radiusGeo, radiusMat);
-    radiusLine.position.set(cx, 0.05, cz);
-    scene.add(radiusLine);
-
-    const dotGeo = new THREE.SphereGeometry(0.14, 24, 18);
-    const dotMat = new THREE.MeshStandardMaterial({
-      color: 0xffcc44,
-      emissive: 0x664400,
-      emissiveIntensity: 0.9,
-      metalness: 0.3,
-      roughness: 0.35
-    });
-    const dot = new THREE.Mesh(dotGeo, dotMat);
-    scene.add(dot);
-
-    const sinAxisMat = new THREE.LineBasicMaterial({
-      color: 0xff5599,
-      transparent: true,
-      opacity: 0.9
-    });
-    const sinAxisGeo = new THREE.BufferGeometry();
-    const sinAxisLine = new THREE.Line(sinAxisGeo, sinAxisMat);
-    sinAxisLine.position.set(cx, 0.05, cz);
-    scene.add(sinAxisLine);
-
-    const cosAxisMat = new THREE.LineBasicMaterial({
-      color: 0x55ff99,
-      transparent: true,
-      opacity: 0.65
-    });
-    const cosAxisGeo = new THREE.BufferGeometry();
-    const cosAxisLine = new THREE.Line(cosAxisGeo, cosAxisMat);
-    cosAxisLine.position.set(cx, 0.05, cz);
-    scene.add(cosAxisLine);
-
-    const wavePoints = 360;
-    const waveGeo = new THREE.BufferGeometry();
-    const wavePos = new Float32Array(wavePoints * 3);
-    waveGeo.setAttribute('position', new THREE.BufferAttribute(wavePos, 3));
-    const waveMat = new THREE.LineBasicMaterial({ color: 0x44ddff });
-    const waveLine = new THREE.Line(waveGeo, waveMat);
-    scene.add(waveLine);
-
-    const tipGeo = new THREE.SphereGeometry(0.12, 20, 16);
-    const tipMat = new THREE.MeshStandardMaterial({
-      color: 0xff66aa,
-      emissive: 0x662244,
-      emissiveIntensity: 0.85,
-      metalness: 0.25,
-      roughness: 0.4
-    });
-    const tipDot = new THREE.Mesh(tipGeo, tipMat);
-    scene.add(tipDot);
-
-    const projMat = new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.35
-    });
-    const projGeo = new THREE.BufferGeometry();
-    const projLine = new THREE.Line(projGeo, projMat);
-    scene.add(projLine);
-
-    const bridgeMat = new THREE.LineDashedMaterial({
-      color: 0xaabbcc,
-      dashSize: 0.15,
-      gapSize: 0.12,
-      transparent: true,
-      opacity: 0.55
-    });
-    const bridgeGeo = new THREE.BufferGeometry();
-    const bridgeLine = new THREE.Line(bridgeGeo, bridgeMat);
-    scene.add(bridgeLine);
-
-    const homeGeo = new THREE.IcosahedronGeometry(0.55, 0);
-    const homeMat = new THREE.MeshStandardMaterial({
-      color: 0x6688aa,
-      metalness: 0.5,
-      roughness: 0.35,
-      emissive: 0x112233,
-      emissiveIntensity: 0.4
-    });
-    const homeBtn = new THREE.Mesh(homeGeo, homeMat);
-    homeBtn.position.set(-4.2, 2.6, 3.2);
-    homeBtn.userData.href = 'index.html';
-    scene.add(homeBtn);
-
-    const circleGroup = [
-      circleMesh, axes, radiusLine, dot, sinAxisLine, cosAxisLine
-    ];
-    const waveGroup = [waveLine, tipDot];
-    const linkGroup = [projLine, bridgeLine];
+    let theta = 0;
+    let playing = true;
+    let speed = 1;
 
     function getMode() {
       const c = document.querySelector('input[name="mode"]:checked');
       return c ? parseInt(c.value, 10) : MODE_BOTH;
     }
 
-    function applyModeVisibility() {
+    function drawCircle2d(ctx, x0, y0, bw, bh, Rmodel, theta, s, c) {
+      const cx = x0 + bw / 2;
+      const cy = y0 + bh / 2;
+      const r = Math.min(bw, bh) * 0.36;
+      ctx.strokeStyle = '#2a3548';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0, y0, bw, bh);
+
+      ctx.strokeStyle = '#8b95a8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x0 + 8, cy);
+      ctx.lineTo(x0 + bw - 8, cy);
+      ctx.moveTo(cx, y0 + 8);
+      ctx.lineTo(cx, y0 + bh - 8);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#3a5a80';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TWO_PI);
+      ctx.stroke();
+
+      const px = cx + c * r;
+      const py = cy - s * r;
+
+      ctx.strokeStyle = '#8899aa';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#55ff99';
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(px, cy);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.strokeStyle = '#ff5599';
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(px, cy);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = '#ffcc44';
+      ctx.beginPath();
+      ctx.arc(px, py, 7, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = '#664400';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#a8b4c8';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`cos θ = ${c.toFixed(3)}`, x0 + 10, y0 + 22);
+      ctx.fillText(`sin θ = ${s.toFixed(3)}`, x0 + 10, y0 + 38);
+      ctx.fillText('θ', cx + r * 0.35, cy - r * 0.35);
+    }
+
+    function drawWave2d(ctx, x0, y0, bw, bh, Rmodel, theta) {
+      ctx.strokeStyle = '#2a3548';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0, y0, bw, bh);
+
+      const padX = 36;
+      const padY = 28;
+      const plotW = bw - padX - 14;
+      const plotH = bh - padY - 22;
+      const px0 = x0 + padX;
+      const py0 = y0 + padY;
+
+      const xMin = 0;
+      const xMax = SLIDER_MAX;
+      const xs = (x) => px0 + ((x - xMin) / (xMax - xMin)) * plotW;
+      const yMid = py0 + plotH / 2;
+      const amp = Math.min(plotH * 0.42, Rmodel * (plotH / (Rmodel * 4)));
+      const ys = (sinVal) => yMid - sinVal * (amp / Rmodel);
+
+      ctx.strokeStyle = '#8b95a8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px0, yMid);
+      ctx.lineTo(px0 + plotW, yMid);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#44ddff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const steps = 180;
+      for (let i = 0; i <= steps; i++) {
+        const t = (i / steps) * xMax;
+        const xv = xs(t);
+        const yv = ys(Rmodel * Math.sin(t));
+        if (i === 0) ctx.moveTo(xv, yv);
+        else ctx.lineTo(xv, yv);
+      }
+      ctx.stroke();
+
+      const tx = xs(theta);
+      const ty = ys(Rmodel * Math.sin(theta));
+      ctx.fillStyle = '#ff66aa';
+      ctx.beginPath();
+      ctx.arc(tx, ty, 8, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = '#662244';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#a8b4c8';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('y = R sin θ（θ は横軸＝角）', x0 + bw / 2, y0 + 16);
+    }
+
+    function draw2d() {
+      const w = c2d.clientWidth;
+      const h = c2d.clientHeight;
       const m = getMode();
       const showC = m === MODE_CIRCLE || m === MODE_BOTH;
       const showW = m === MODE_WAVE || m === MODE_BOTH;
-      const showL = m === MODE_BOTH;
-      for (const o of circleGroup) o.visible = showC;
-      for (const o of waveGroup) o.visible = showW;
-      for (const o of linkGroup) o.visible = showL;
+      const s = Math.sin(theta);
+      const c = Math.cos(theta);
+      const Rmodel = 2.2;
+
+      ctx2d.fillStyle = '#121826';
+      ctx2d.fillRect(0, 0, w, h);
+
+      const pad = 12;
+      if (showC && showW) {
+        const split = w * 0.42;
+        drawCircle2d(ctx2d, pad, pad, split - pad * 2, h - pad * 2, Rmodel, theta, s, c);
+        drawWave2d(ctx2d, split + pad, pad, w - split - pad * 2, h - pad * 2, Rmodel, theta);
+      } else if (showC) {
+        drawCircle2d(ctx2d, pad, pad, w - pad * 2, h - pad * 2, Rmodel, theta, s, c);
+      } else if (showW) {
+        drawWave2d(ctx2d, pad, pad, w - pad * 2, h - pad * 2, Rmodel, theta);
+      }
+    }
+
+    function resize2d() {
+      const wrap = document.getElementById('wrap2d');
+      const r = wrap.getBoundingClientRect();
+      const dpr = Math.min(devicePixelRatio, 2);
+      const cw = Math.floor(Math.min(r.width - 8, 960));
+      const ch = Math.floor(Math.min(window.innerHeight * 0.72, 640));
+      c2d.width = Math.max(360, cw) * dpr;
+      c2d.height = Math.max(260, ch) * dpr;
+      c2d.style.width = `${Math.max(360, cw)}px`;
+      c2d.style.height = `${Math.max(260, ch)}px`;
+      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw2d();
+    }
+
+    let threeReady = false;
+    let scene;
+    let camera;
+    let renderer;
+    let sphereMesh;
+    let controls;
+
+    function syncRgbMaterial() {
+      if (!threeReady) return;
+      const elapsed = performance.now() - matTimeOrigin;
+      const frac = (elapsed % MAT_PERIOD_MS) / MAT_PERIOD_MS;
+      const t = Math.sin(Math.PI * frac);
+      sphereMesh.material.color.setRGB(t, t, t);
+      xvMat.value = String(Math.round(t * MAT_RANGE));
+      rgbMatOut.textContent =
+        `R ${t.toFixed(3)} · G ${t.toFixed(3)} · B ${t.toFixed(3)}`;
+    }
+
+    function initMaterialDemo() {
+      if (threeReady) return;
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x05070c);
+
+      camera = new THREE.PerspectiveCamera(42, 2, 0.1, 100);
+      camera.position.set(0, 0.35, 3.6);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      canvasWrap.appendChild(renderer.domElement);
+
+      const geo = new THREE.SphereGeometry(1, 48, 32);
+      const mat = new THREE.MeshStandardMaterial({
+        metalness: 0.25,
+        roughness: 0.42
+      });
+      sphereMesh = new THREE.Mesh(geo, mat);
+      scene.add(sphereMesh);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.38));
+      const dl = new THREE.DirectionalLight(0xffffff, 1);
+      dl.position.set(4.5, 7.5, 6);
+      scene.add(dl);
+      scene.add(new THREE.HemisphereLight(0x6688cc, 0x221100, 0.28));
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      threeReady = true;
+      syncRgbMaterial();
+      resizeMaterial();
+    }
+
+    function resizeMaterial() {
+      if (!threeReady) return;
+      const w = canvasWrap.clientWidth;
+      const h = Math.max(canvasWrap.clientHeight, 200);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function tickMaterial() {
+      if (currentStep !== 2) return;
+      syncRgbMaterial();
+    }
+
+    function applyModeVisibility() {
+      if (currentStep === 1) draw2d();
     }
 
     elRadios.forEach((r) => r.addEventListener('change', applyModeVisibility));
-    applyModeVisibility();
-
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-
-    let theta = 0;
-    let playing = true;
-    let speed = 1;
-
-    function setPointer(e) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      const x = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
-      const y = (e.clientY ?? e.touches?.[0]?.clientY) - rect.top;
-      pointer.x = (x / rect.width) * 2 - 1;
-      pointer.y = -(y / rect.height) * 2 + 1;
-    }
 
     function syncControlsFromTheta() {
       const clamped = Math.min(Math.max(theta, 0), SLIDER_MAX);
@@ -309,22 +500,6 @@
       if (elAuto.checked) playing = true;
     });
 
-    window.addEventListener('pointermove', (e) => {
-      setPointer(e);
-      if (e.buttons === 1 && e.target === renderer.domElement) {
-        speed = 0.15 + (pointer.x + 1) * 1.2;
-      }
-    });
-
-    window.addEventListener('click', (e) => {
-      setPointer(e);
-      raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObject(homeBtn, false);
-      if (hits.length && homeBtn.userData.href) {
-        window.location.href = homeBtn.userData.href;
-      }
-    });
-
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
@@ -332,77 +507,35 @@
       }
     });
 
-    function resize() {
-      const w = canvasWrap.clientWidth;
-      const h = canvasWrap.clientHeight;
-      camera.aspect = w / Math.max(h, 1);
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    }
-    window.addEventListener('resize', resize);
-    resize();
+    window.addEventListener('resize', () => {
+      if (currentStep === 1) resize2d();
+      else resizeMaterial();
+    });
 
     const clock = new THREE.Clock();
 
     syncControlsFromTheta();
 
+    applyRoute();
+    applyModeVisibility();
+
     (function animate() {
       requestAnimationFrame(animate);
+      tickMaterial();
       const dt = clock.getDelta();
-      if (elAuto.checked && playing) {
+      if (currentStep === 1 && elAuto.checked && playing) {
         theta += dt * speed * 1.1;
         if (theta > SLIDER_MAX) theta -= SLIDER_MAX;
         if (theta < 0) theta = 0;
         syncControlsFromTheta();
       }
 
-      const s = Math.sin(theta);
-      const c = Math.cos(theta);
-
-      const px = cx + c * R;
-      const pz = cz + s * R;
-      dot.position.set(px, 0.18, pz);
-
-      radiusGeo.setFromPoints([
-        new THREE.Vector3(cx, 0, cz),
-        new THREE.Vector3(px, 0, pz)
-      ]);
-
-      sinAxisGeo.setFromPoints([
-        new THREE.Vector3(px, 0, cz),
-        new THREE.Vector3(px, 0, pz)
-      ]);
-
-      cosAxisGeo.setFromPoints([
-        new THREE.Vector3(cx, 0, cz),
-        new THREE.Vector3(px, 0, cz)
-      ]);
-
-      for (let i = 0; i < wavePoints; i++) {
-        const u = (i / (wavePoints - 1)) * TWO_PI * 2;
-        wavePos[i * 3] = u * waveXScale;
-        wavePos[i * 3 + 1] = R * Math.sin(u);
-        wavePos[i * 3 + 2] = 0;
+      if (currentStep === 1) {
+        draw2d();
+      } else if (currentStep === 2 && threeReady) {
+        controls.update();
+        renderer.render(scene, camera);
       }
-      waveGeo.attributes.position.needsUpdate = true;
-
-      const tipX = theta * waveXScale;
-      const tipY = R * s;
-      tipDot.position.set(tipX, tipY, 0);
-
-      projGeo.setFromPoints([
-        new THREE.Vector3(px, 0.05, pz),
-        new THREE.Vector3(tipX, tipY, 0)
-      ]);
-
-      bridgeGeo.setFromPoints([
-        new THREE.Vector3(px, 0.05, pz),
-        new THREE.Vector3(px, 0.05, cz)
-      ]);
-      bridgeLine.computeLineDistances();
-
-      controls.update();
-      renderer.render(scene, camera);
     })();
   </script>
 </body>
