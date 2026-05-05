@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Math for CG — Home</title>
+  <style>
+    :root {
+      --bg: #0a0d14;
+      --card: #121826;
+      --text: #e8ecf4;
+      --muted: #8b95a8;
+      --accent: #4dd4ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid #1e2838;
+    }
+    header h1 { font-size: 1.35rem; font-weight: 600; }
+    main {
+      flex: 1;
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 1.75rem 1.5rem 2.5rem;
+      width: 100%;
+    }
+    main > p { color: var(--muted); margin-bottom: 1.5rem; max-width: 42rem; }
+    nav h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    nav ul { list-style: none; }
+    nav li { margin-bottom: 0.5rem; }
+    nav a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 0.35rem 0;
+    }
+    nav a:hover { text-decoration: underline; }
+    footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid #1e2838;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Math for CG（学生向けメモ置き場）</h1>
+  </header>
+  <main>
+    <p>
+      3DCG で出てくる数学を、図と操作で追いかけるためのサイトです。トピックは順次追加します。
+    </p>
+    <nav aria-label="トピック一覧">
+      <h2>Topics</h2>
+      <ul>
+        <li><a href="sin.html">sin θ — 単位円と正弦波（Three.js）</a></li>
+        <li><a href="uniform.html#step-1">等速直線運動 — Step 1 / Step 2（Canvas + Three.js）</a></li>
+      </ul>
+    </nav>
+  </main>
+  <footer>
+    GitHub Pages 前提・静的ファイルのみ。
+  </footer>
+</body>
+</html>

@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>&#8203;</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: #05070c;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #bar {
+      flex-shrink: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 1rem;
+      padding: 0.45rem 0.65rem;
+      background: #0c1018;
+      border-bottom: 1px solid #1a2233;
+    }
+    #bar .radios {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    #bar input[type="radio"] {
+      width: 1rem;
+      height: 1rem;
+      cursor: pointer;
+      accent-color: #4dd4ff;
+    }
+    #bar input[type="checkbox"] {
+      width: 1rem;
+      height: 1rem;
+      cursor: pointer;
+      accent-color: #ffaa44;
+    }
+    #bar input[type="range"] {
+      width: min(48vw, 260px);
+      vertical-align: middle;
+      accent-color: #66aaff;
+    }
+    #bar input[type="number"] {
+      width: 5rem;
+      padding: 0.2rem 0.35rem;
+      background: #141a26;
+      border: 1px solid #2a3548;
+      color: #c8d0e0;
+      border-radius: 4px;
+    }
+    #canvas-wrap {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+    }
+    #canvas-wrap canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <div class="radios">
+      <input type="radio" name="mode" id="m0" value="0" title="">
+      <input type="radio" name="mode" id="m1" value="1" title="">
+      <input type="radio" name="mode" id="m2" value="2" checked title="">
+    </div>
+    <input type="checkbox" id="auto" checked title="">
+    <input type="range" id="thetaSlider" min="0" max="25.132741228718345" step="0.001" value="0" title="">
+    <input type="number" id="thetaNum" step="0.0001" value="0" title="">
+  </div>
+  <div id="canvas-wrap"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const TWO_PI = Math.PI * 2;
+    const SLIDER_MAX = TWO_PI * 4;
+
+    const MODE_CIRCLE = 0;
+    const MODE_WAVE = 1;
+    const MODE_BOTH = 2;
+
+    const elRadios = document.querySelectorAll('input[name="mode"]');
+    const elAuto = document.getElementById('auto');
+    const elSlider = document.getElementById('thetaSlider');
+    const elNum = document.getElementById('thetaNum');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x05070c);
+    scene.fog = new THREE.FogExp2(0x05070c, 0.028);
+
+    const camera = new THREE.PerspectiveCamera(42, 2, 0.1, 200);
+    camera.position.set(6.2, 4.2, 9);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+    const canvasWrap = document.getElementById('canvas-wrap');
+    canvasWrap.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(1.2, 0.8, 0);
+
+    scene.add(new THREE.AmbientLight(0x334466, 0.45));
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    sun.position.set(8, 14, 10);
+    scene.add(sun);
+    scene.add(new THREE.HemisphereLight(0x6688cc, 0x221100, 0.35));
+
+    const grid = new THREE.GridHelper(24, 48, 0x1c2840, 0x0f1522);
+    scene.add(grid);
+
+    const R = 2.2;
+    const cx = 0;
+    const cz = 0;
+    const waveXScale = 0.65;
+
+    const circleGeo = new THREE.RingGeometry(R - 0.02, R + 0.02, 128);
+    const circleMat = new THREE.MeshBasicMaterial({
+      color: 0x3a5a80,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85
+    });
+    const circleMesh = new THREE.Mesh(circleGeo, circleMat);
+    circleMesh.rotation.x = -Math.PI / 2;
+    circleMesh.position.set(cx, 0.02, cz);
+    scene.add(circleMesh);
+
+    const axes = new THREE.AxesHelper(R * 1.25);
+    axes.position.set(cx, 0.06, cz);
+    scene.add(axes);
+
+    const radiusGeo = new THREE.BufferGeometry();
+    const radiusMat = new THREE.LineBasicMaterial({ color: 0x8899aa });
+    const radiusLine = new THREE.Line(radiusGeo, radiusMat);
+    radiusLine.position.set(cx, 0.05, cz);
+    scene.add(radiusLine);
+
+    const dotGeo = new THREE.SphereGeometry(0.14, 24, 18);
+    const dotMat = new THREE.MeshStandardMaterial({
+      color: 0xffcc44,
+      emissive: 0x664400,
+      emissiveIntensity: 0.9,
+      metalness: 0.3,
+      roughness: 0.35
+    });
+    const dot = new THREE.Mesh(dotGeo, dotMat);
+    scene.add(dot);
+
+    const sinAxisMat = new THREE.LineBasicMaterial({
+      color: 0xff5599,
+      transparent: true,
+      opacity: 0.9
+    });
+    const sinAxisGeo = new THREE.BufferGeometry();
+    const sinAxisLine = new THREE.Line(sinAxisGeo, sinAxisMat);
+    sinAxisLine.position.set(cx, 0.05, cz);
+    scene.add(sinAxisLine);
+
+    const cosAxisMat = new THREE.LineBasicMaterial({
+      color: 0x55ff99,
+      transparent: true,
+      opacity: 0.65
+    });
+    const cosAxisGeo = new THREE.BufferGeometry();
+    const cosAxisLine = new THREE.Line(cosAxisGeo, cosAxisMat);
+    cosAxisLine.position.set(cx, 0.05, cz);
+    scene.add(cosAxisLine);
+
+    const wavePoints = 360;
+    const waveGeo = new THREE.BufferGeometry();
+    const wavePos = new Float32Array(wavePoints * 3);
+    waveGeo.setAttribute('position', new THREE.BufferAttribute(wavePos, 3));
+    const waveMat = new THREE.LineBasicMaterial({ color: 0x44ddff });
+    const waveLine = new THREE.Line(waveGeo, waveMat);
+    scene.add(waveLine);
+
+    const tipGeo = new THREE.SphereGeometry(0.12, 20, 16);
+    const tipMat = new THREE.MeshStandardMaterial({
+      color: 0xff66aa,
+      emissive: 0x662244,
+      emissiveIntensity: 0.85,
+      metalness: 0.25,
+      roughness: 0.4
+    });
+    const tipDot = new THREE.Mesh(tipGeo, tipMat);
+    scene.add(tipDot);
+
+    const projMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35
+    });
+    const projGeo = new THREE.BufferGeometry();
+    const projLine = new THREE.Line(projGeo, projMat);
+    scene.add(projLine);
+
+    const bridgeMat = new THREE.LineDashedMaterial({
+      color: 0xaabbcc,
+      dashSize: 0.15,
+      gapSize: 0.12,
+      transparent: true,
+      opacity: 0.55
+    });
+    const bridgeGeo = new THREE.BufferGeometry();
+    const bridgeLine = new THREE.Line(bridgeGeo, bridgeMat);
+    scene.add(bridgeLine);
+
+    const homeGeo = new THREE.IcosahedronGeometry(0.55, 0);
+    const homeMat = new THREE.MeshStandardMaterial({
+      color: 0x6688aa,
+      metalness: 0.5,
+      roughness: 0.35,
+      emissive: 0x112233,
+      emissiveIntensity: 0.4
+    });
+    const homeBtn = new THREE.Mesh(homeGeo, homeMat);
+    homeBtn.position.set(-4.2, 2.6, 3.2);
+    homeBtn.userData.href = 'index.html';
+    scene.add(homeBtn);
+
+    const circleGroup = [
+      circleMesh, axes, radiusLine, dot, sinAxisLine, cosAxisLine
+    ];
+    const waveGroup = [waveLine, tipDot];
+    const linkGroup = [projLine, bridgeLine];
+
+    function getMode() {
+      const c = document.querySelector('input[name="mode"]:checked');
+      return c ? parseInt(c.value, 10) : MODE_BOTH;
+    }
+
+    function applyModeVisibility() {
+      const m = getMode();
+      const showC = m === MODE_CIRCLE || m === MODE_BOTH;
+      const showW = m === MODE_WAVE || m === MODE_BOTH;
+      const showL = m === MODE_BOTH;
+      for (const o of circleGroup) o.visible = showC;
+      for (const o of waveGroup) o.visible = showW;
+      for (const o of linkGroup) o.visible = showL;
+    }
+
+    elRadios.forEach((r) => r.addEventListener('change', applyModeVisibility));
+    applyModeVisibility();
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    let theta = 0;
+    let playing = true;
+    let speed = 1;
+
+    function setPointer(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
+      const y = (e.clientY ?? e.touches?.[0]?.clientY) - rect.top;
+      pointer.x = (x / rect.width) * 2 - 1;
+      pointer.y = -(y / rect.height) * 2 + 1;
+    }
+
+    function syncControlsFromTheta() {
+      const clamped = Math.min(Math.max(theta, 0), SLIDER_MAX);
+      elSlider.value = String(clamped);
+      elNum.value = clamped.toFixed(4);
+    }
+
+    function applyThetaFromUi() {
+      const v = parseFloat(elSlider.value);
+      if (!Number.isFinite(v)) return;
+      theta = v;
+      syncControlsFromTheta();
+    }
+
+    elSlider.addEventListener('input', () => {
+      if (elAuto.checked) elAuto.checked = false;
+      playing = false;
+      applyThetaFromUi();
+    });
+
+    elNum.addEventListener('change', () => {
+      const v = parseFloat(elNum.value);
+      if (!Number.isFinite(v)) return;
+      if (elAuto.checked) elAuto.checked = false;
+      playing = false;
+      theta = Math.min(Math.max(v, 0), SLIDER_MAX);
+      syncControlsFromTheta();
+    });
+
+    elAuto.addEventListener('change', () => {
+      if (elAuto.checked) playing = true;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      setPointer(e);
+      if (e.buttons === 1 && e.target === renderer.domElement) {
+        speed = 0.15 + (pointer.x + 1) * 1.2;
+      }
+    });
+
+    window.addEventListener('click', (e) => {
+      setPointer(e);
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObject(homeBtn, false);
+      if (hits.length && homeBtn.userData.href) {
+        window.location.href = homeBtn.userData.href;
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        playing = !playing;
+      }
+    });
+
+    function resize() {
+      const w = canvasWrap.clientWidth;
+      const h = canvasWrap.clientHeight;
+      camera.aspect = w / Math.max(h, 1);
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const clock = new THREE.Clock();
+
+    syncControlsFromTheta();
+
+    (function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      if (elAuto.checked && playing) {
+        theta += dt * speed * 1.1;
+        if (theta > SLIDER_MAX) theta -= SLIDER_MAX;
+        if (theta < 0) theta = 0;
+        syncControlsFromTheta();
+      }
+
+      const s = Math.sin(theta);
+      const c = Math.cos(theta);
+
+      const px = cx + c * R;
+      const pz = cz + s * R;
+      dot.position.set(px, 0.18, pz);
+
+      radiusGeo.setFromPoints([
+        new THREE.Vector3(cx, 0, cz),
+        new THREE.Vector3(px, 0, pz)
+      ]);
+
+      sinAxisGeo.setFromPoints([
+        new THREE.Vector3(px, 0, cz),
+        new THREE.Vector3(px, 0, pz)
+      ]);
+
+      cosAxisGeo.setFromPoints([
+        new THREE.Vector3(cx, 0, cz),
+        new THREE.Vector3(px, 0, cz)
+      ]);
+
+      for (let i = 0; i < wavePoints; i++) {
+        const u = (i / (wavePoints - 1)) * TWO_PI * 2;
+        wavePos[i * 3] = u * waveXScale;
+        wavePos[i * 3 + 1] = R * Math.sin(u);
+        wavePos[i * 3 + 2] = 0;
+      }
+      waveGeo.attributes.position.needsUpdate = true;
+
+      const tipX = theta * waveXScale;
+      const tipY = R * s;
+      tipDot.position.set(tipX, tipY, 0);
+
+      projGeo.setFromPoints([
+        new THREE.Vector3(px, 0.05, pz),
+        new THREE.Vector3(tipX, tipY, 0)
+      ]);
+
+      bridgeGeo.setFromPoints([
+        new THREE.Vector3(px, 0.05, pz),
+        new THREE.Vector3(px, 0.05, cz)
+      ]);
+      bridgeLine.computeLineDistances();
+
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>
