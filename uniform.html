@@ -15,30 +15,6 @@
       flex-direction: column;
       min-height: 100%;
     }
-    header {
-      padding: 0.85rem 1.25rem;
-      border-bottom: 1px solid #1e2838;
-      flex-shrink: 0;
-    }
-    header h1 { font-size: 1.1rem; font-weight: 600; }
-    .step-links {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.45rem 1rem;
-      background: #0a0e18;
-      border-bottom: 1px solid #1a2233;
-      flex-shrink: 0;
-      font-size: 0.9rem;
-    }
-    .step-links a {
-      color: #7ec8ff;
-      text-decoration: none;
-      padding: 0.2rem 0.35rem;
-    }
-    .step-links a:hover { text-decoration: underline; }
-    .step-links .sep { color: #4a5668; user-select: none; }
     .toolbar {
       display: flex;
       flex-wrap: wrap;
@@ -84,13 +60,15 @@
       align-items: stretch;
       justify-content: center;
     }
-    #wrap3d {
+    #wrap3d,
+    #wrap3d4 {
       flex: 1;
       min-height: 0;
       padding: 1rem;
       position: relative;
     }
-    #wrap3d canvas {
+    #wrap3d canvas,
+    #wrap3d4 canvas {
       display: block;
       width: 100%;
       height: 100%;
@@ -106,32 +84,68 @@
       border-radius: 8px;
       touch-action: none;
     }
-    footer {
-      padding: 0.65rem 1.25rem;
-      border-top: 1px solid #1e2838;
-      font-size: 0.8rem;
-      color: #6b7588;
-      flex-shrink: 0;
+    #wrap3 {
+      flex: 1;
+      min-height: 0;
+      padding: 1rem;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
     }
-    footer a { color: #7ec8ff; }
+    #c3 {
+      width: 100%;
+      max-width: min(960px, 100%);
+      height: min(70vh, 560px);
+      background: #080b12;
+      border: 1px solid #1e2838;
+      border-radius: 8px;
+      touch-action: none;
+    }
+    #toolbar12.is-hidden { display: none; }
+    .toolbar-step { display: none; }
+    .toolbar-step.visible { display: flex; }
+    .toolbar .btn-step {
+      font: inherit;
+      font-size: 0.9rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      border: 1px solid #2a4058;
+      background: #152030;
+      color: #c8d8ec;
+      cursor: pointer;
+    }
+    .toolbar .btn-step:hover { background: #1a2a40; }
+    .toolbar input[type="range"]:disabled {
+      opacity: 0.85;
+      cursor: default;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1 id="pageTitle">Uniform linear motion (graph is always y = x)</h1>
-  </header>
-  <nav class="step-links" aria-label="Steps">
-    <a href="#step-1" id="linkStep1">Step 1</a>
-    <span class="sep">|</span>
-    <a href="#step-2" id="linkStep2">Step 2</a>
-  </nav>
-  <div class="toolbar">
+  <div class="toolbar" id="toolbar12">
     <label>
       x
       <input type="range" id="xv" min="0" max="1000" value="400" step="1">
       <output id="xvOut" for="xv"></output>
       <output id="rgbOut" for="xv" class="is-hidden"></output>
     </label>
+  </div>
+  <div class="toolbar toolbar-step" id="toolbar3" aria-label="Step 3 controls">
+    <label>
+      x
+      <input type="range" id="xv3" min="0" max="1000" value="0" step="1" disabled aria-label="x driven by time">
+      <output id="xv3Out" for="xv3"></output>
+    </label>
+    <button type="button" class="btn-step" id="btnStart3">Start</button>
+  </div>
+  <div class="toolbar toolbar-step" id="toolbar4" aria-label="Step 4 controls">
+    <label>
+      x
+      <input type="range" id="xv4" min="0" max="1000" value="0" step="1" disabled aria-label="x driven by time">
+      <output id="xv4Out" for="xv4" class="is-hidden"></output>
+      <output id="rgbOut4" for="xv4"></output>
+    </label>
+    <button type="button" class="btn-step" id="btnStart4">Start</button>
   </div>
 
   <section id="panel1" class="panel active" aria-label="Step 1">
@@ -144,11 +158,15 @@
     <div id="wrap3d"></div>
   </section>
 
-  <footer>
-    <a href="index.html">← Top</a>
-    · <a href="#step-1">Step 1 URL</a> · <a href="#step-2">Step 2 URL</a>
-    · Same slider: Step 1 moves the point on y = x; Step 2 maps the value to sphere RGB.
-  </footer>
+  <section id="panel3" class="panel" aria-label="Step 3">
+    <div id="wrap3">
+      <canvas id="c3" width="800" height="480" aria-label="y equals x graph time driven"></canvas>
+    </div>
+  </section>
+
+  <section id="panel4" class="panel" aria-label="Step 4">
+    <div id="wrap3d4"></div>
+  </section>
 
   <script type="importmap">
   {
@@ -171,7 +189,6 @@
     const elX = document.getElementById('xv');
     const elXOut = document.getElementById('xvOut');
     const elRgbOut = document.getElementById('rgbOut');
-    const pageTitle = document.getElementById('pageTitle');
     const panel1 = document.getElementById('panel1');
     const panel2 = document.getElementById('panel2');
     const wrap3d = document.getElementById('wrap3d');
@@ -262,6 +279,128 @@
       elXOut.textContent = `x = ${xVal.toFixed(2)} · y = ${xVal.toFixed(2)}`;
     }
 
+    const canvas3 = document.getElementById('c3');
+    const ctx3 = canvas3.getContext('2d');
+    const xv3 = document.getElementById('xv3');
+    const xv3Out = document.getElementById('xv3Out');
+    const xv4 = document.getElementById('xv4');
+    const rgbOut4 = document.getElementById('rgbOut4');
+    const wrap3d4 = document.getElementById('wrap3d4');
+    const panel3 = document.getElementById('panel3');
+    const panel4 = document.getElementById('panel4');
+    const toolbar12 = document.getElementById('toolbar12');
+    const toolbar3 = document.getElementById('toolbar3');
+    const toolbar4 = document.getElementById('toolbar4');
+    const btnStart3 = document.getElementById('btnStart3');
+    const btnStart4 = document.getElementById('btnStart4');
+
+    const TIME_LOOP_MS = 10000;
+    let step3Running = false;
+    let step3T0 = 0;
+    let step4Running = false;
+    let step4T0 = 0;
+
+    function drawGraph3() {
+      const w = canvas3.clientWidth;
+      const h = canvas3.clientHeight;
+      const xVal = (parseFloat(xv3.value) / 1000) * R;
+
+      ctx3.fillStyle = '#121826';
+      ctx3.fillRect(0, 0, w, h);
+
+      const { square, left, top } = layout(w, h);
+
+      ctx3.strokeStyle = '#2a3548';
+      ctx3.lineWidth = 1;
+      const steps = 10;
+      for (let i = 0; i <= steps; i++) {
+        const v = (i / steps) * R;
+        const a = toScreen(v, 0, w, h);
+        const b = toScreen(v, R, w, h);
+        ctx3.beginPath();
+        ctx3.moveTo(a.sx, a.sy);
+        ctx3.lineTo(b.sx, b.sy);
+        ctx3.stroke();
+        const c = toScreen(0, v, w, h);
+        const d = toScreen(R, v, w, h);
+        ctx3.beginPath();
+        ctx3.moveTo(c.sx, c.sy);
+        ctx3.lineTo(d.sx, d.sy);
+        ctx3.stroke();
+      }
+
+      ctx3.strokeStyle = '#8b95a8';
+      ctx3.lineWidth = 2;
+      const o0 = toScreen(0, 0, w, h);
+      const ox = toScreen(R, 0, w, h);
+      const oy = toScreen(0, R, w, h);
+      ctx3.beginPath();
+      ctx3.moveTo(o0.sx, o0.sy);
+      ctx3.lineTo(ox.sx, ox.sy);
+      ctx3.moveTo(o0.sx, o0.sy);
+      ctx3.lineTo(oy.sx, oy.sy);
+      ctx3.stroke();
+
+      ctx3.fillStyle = '#a8b4c8';
+      ctx3.font = '13px system-ui, sans-serif';
+      ctx3.textAlign = 'center';
+      ctx3.fillText('x', left + square + 14, o0.sy + 4);
+      ctx3.textAlign = 'right';
+      ctx3.fillText('y', o0.sx - 10, top - 6);
+
+      const p0 = toScreen(0, 0, w, h);
+      const p1 = toScreen(R, R, w, h);
+      ctx3.strokeStyle = '#4dd4ff';
+      ctx3.lineWidth = 2.5;
+      ctx3.beginPath();
+      ctx3.moveTo(p0.sx, p0.sy);
+      ctx3.lineTo(p1.sx, p1.sy);
+      ctx3.stroke();
+
+      const q = toScreen(xVal, xVal, w, h);
+      ctx3.fillStyle = '#ffcc44';
+      ctx3.beginPath();
+      ctx3.arc(q.sx, q.sy, 8, 0, Math.PI * 2);
+      ctx3.fill();
+      ctx3.strokeStyle = '#664400';
+      ctx3.lineWidth = 2;
+      ctx3.stroke();
+
+      xv3Out.textContent = `x = ${xVal.toFixed(2)} · y = ${xVal.toFixed(2)}`;
+    }
+
+    function tickStep3() {
+      if (currentStep !== 3 || !step3Running) return;
+      const elapsed = performance.now() - step3T0;
+      const ratio = Math.min(elapsed / TIME_LOOP_MS, 1);
+      xv3.value = String(Math.round(ratio * 1000));
+      drawGraph3();
+      if (ratio >= 1) step3Running = false;
+    }
+
+    function tickStep4() {
+      if (currentStep !== 4 || !step4Running) return;
+      const elapsed = performance.now() - step4T0;
+      const ratio = Math.min(elapsed / TIME_LOOP_MS, 1);
+      xv4.value = String(Math.round(ratio * 1000));
+      syncRgbFromSlider4();
+      if (ratio >= 1) step4Running = false;
+    }
+
+    function resizeGraphShell3() {
+      const wrap = document.getElementById('wrap3');
+      const r = wrap.getBoundingClientRect();
+      const dpr = Math.min(devicePixelRatio, 2);
+      const cw = Math.floor(Math.min(r.width - 8, 960));
+      const ch = Math.floor(Math.min(window.innerHeight * 0.65, 560));
+      canvas3.width = Math.max(400, cw) * dpr;
+      canvas3.height = Math.max(280, ch) * dpr;
+      canvas3.style.width = `${Math.max(400, cw)}px`;
+      canvas3.style.height = `${Math.max(280, ch)}px`;
+      ctx3.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawGraph3();
+    }
+
     let threeReady = false;
     let scene;
     let camera;
@@ -324,11 +463,71 @@
       renderer.setSize(w, h);
     }
 
+    let threeReady4 = false;
+    let scene4;
+    let camera4;
+    let renderer4;
+    let sphereMesh4;
+    let controls4;
+
+    function syncRgbFromSlider4() {
+      const t = parseFloat(xv4.value) / 1000;
+      if (!threeReady4) return;
+      sphereMesh4.material.color.setRGB(t, t, t);
+      rgbOut4.textContent =
+        `R ${t.toFixed(3)} · G ${t.toFixed(3)} · B ${t.toFixed(3)}`;
+    }
+
+    function initThree4() {
+      if (threeReady4) return;
+      scene4 = new THREE.Scene();
+      scene4.background = new THREE.Color(0x05070c);
+
+      camera4 = new THREE.PerspectiveCamera(42, 2, 0.1, 100);
+      camera4.position.set(0, 0.35, 3.6);
+
+      renderer4 = new THREE.WebGLRenderer({ antialias: true });
+      renderer4.setPixelRatio(Math.min(devicePixelRatio, 2));
+      wrap3d4.appendChild(renderer4.domElement);
+
+      const geo4 = new THREE.SphereGeometry(1, 48, 32);
+      const mat4 = new THREE.MeshStandardMaterial({
+        metalness: 0.25,
+        roughness: 0.42
+      });
+      sphereMesh4 = new THREE.Mesh(geo4, mat4);
+      scene4.add(sphereMesh4);
+
+      scene4.add(new THREE.AmbientLight(0xffffff, 0.38));
+      const dl4 = new THREE.DirectionalLight(0xffffff, 1);
+      dl4.position.set(4.5, 7.5, 6);
+      scene4.add(dl4);
+      scene4.add(new THREE.HemisphereLight(0x6688cc, 0x221100, 0.28));
+
+      controls4 = new OrbitControls(camera4, renderer4.domElement);
+      controls4.enableDamping = true;
+
+      threeReady4 = true;
+      syncRgbFromSlider4();
+      resizeThree4();
+    }
+
+    function resizeThree4() {
+      if (!threeReady4) return;
+      const w = wrap3d4.clientWidth;
+      const h = Math.max(wrap3d4.clientHeight, 200);
+      camera4.aspect = w / h;
+      camera4.updateProjectionMatrix();
+      renderer4.setSize(w, h);
+    }
+
     let currentStep = 1;
 
     function parseStep() {
       const raw = (location.hash || '#step-1').replace(/^#/, '').toLowerCase();
       if (raw === '2' || raw === 'step2' || raw === 'step-2') return 2;
+      if (raw === '3' || raw === 'step3' || raw === 'step-3') return 3;
+      if (raw === '4' || raw === 'step4' || raw === 'step-4') return 4;
       return 1;
     }
 
@@ -340,23 +539,51 @@
       currentStep = parseStep();
       panel1.classList.toggle('active', currentStep === 1);
       panel2.classList.toggle('active', currentStep === 2);
+      panel3.classList.toggle('active', currentStep === 3);
+      panel4.classList.toggle('active', currentStep === 4);
 
       elXOut.classList.toggle('is-hidden', currentStep !== 1);
       elRgbOut.classList.toggle('is-hidden', currentStep !== 2);
 
+      const on12 = currentStep === 1 || currentStep === 2;
+      toolbar12.classList.toggle('is-hidden', !on12);
+      toolbar3.classList.toggle('visible', currentStep === 3);
+      toolbar4.classList.toggle('visible', currentStep === 4);
+
       if (currentStep === 1) {
         document.title = 'Uniform linear motion — Step 1';
-        pageTitle.textContent = 'Uniform linear motion (graph is always y = x)';
         drawGraph();
-      } else {
+      } else if (currentStep === 2) {
         document.title = 'Uniform linear motion — Step 2';
-        pageTitle.textContent = 'Step 2 — Sphere color (RGB synced to slider, Three.js)';
         initThree();
         syncRgbFromSlider();
         requestAnimationFrame(() => {
           resizeThree();
           requestAnimationFrame(() => resizeThree());
         });
+      } else if (currentStep === 3) {
+        document.title = 'Uniform linear motion — Step 3';
+        step3Running = false;
+        xv3.value = '0';
+        requestAnimationFrame(() => {
+          resizeGraphShell3();
+          requestAnimationFrame(() => resizeGraphShell3());
+        });
+      } else if (currentStep === 4) {
+        document.title = 'Uniform linear motion — Step 4';
+        initThree4();
+        syncRgbFromSlider4();
+        requestAnimationFrame(() => {
+          resizeThree4();
+          requestAnimationFrame(() => resizeThree4());
+        });
+      }
+
+      if (currentStep !== 3) {
+        step3Running = false;
+      }
+      if (currentStep !== 4) {
+        step4Running = false;
       }
     }
 
@@ -376,14 +603,30 @@
 
     window.addEventListener('resize', () => {
       resizeGraphShell();
+      resizeGraphShell3();
       resizeThree();
+      resizeThree4();
     });
 
     window.addEventListener('hashchange', applyRoute);
 
     elX.addEventListener('input', () => {
       if (currentStep === 1) drawGraph();
-      else syncRgbFromSlider();
+      else if (currentStep === 2) syncRgbFromSlider();
+    });
+
+    btnStart3.addEventListener('click', () => {
+      step3Running = true;
+      step3T0 = performance.now();
+      xv3.value = '0';
+      drawGraph3();
+    });
+
+    btnStart4.addEventListener('click', () => {
+      step4Running = true;
+      step4T0 = performance.now();
+      xv4.value = '0';
+      syncRgbFromSlider4();
     });
 
     function loop() {
@@ -392,6 +635,12 @@
         controls.update();
         renderer.render(scene, camera);
       }
+      if (currentStep === 4 && threeReady4) {
+        controls4.update();
+        renderer4.render(scene4, camera4);
+      }
+      tickStep3();
+      tickStep4();
     }
 
     applyRoute();
