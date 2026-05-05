@@ -108,7 +108,7 @@
       align-items: stretch;
       justify-content: center;
     }
-    #c2d {
+    #c2d, #c3d {
       width: 100%;
       max-width: min(960px, 100%);
       height: min(78vh, 640px);
@@ -116,6 +116,14 @@
       border: 1px solid #1e2838;
       border-radius: 8px;
       touch-action: none;
+    }
+    #wrap2dTan {
+      flex: 1;
+      min-height: 0;
+      padding: 0.5rem;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
     }
     #canvas-wrap {
       flex: 1;
@@ -160,6 +168,12 @@
     <div id="canvas-wrap"></div>
   </section>
 
+  <section id="panel3" class="panel" aria-label="Step 3 — 2D tan">
+    <div id="wrap2dTan">
+      <canvas id="c3d" width="800" height="520" aria-label="tan — unit circle and wave (2D)"></canvas>
+    </div>
+  </section>
+
   <script type="importmap">
   {
     "imports": {
@@ -184,6 +198,7 @@
     function parseStep() {
       const raw = (location.hash || '#step-1').replace(/^#/, '').toLowerCase();
       if (raw === '2' || raw === 'step2' || raw === 'step-2') return 2;
+      if (raw === '3' || raw === 'step3' || raw === 'step-3') return 3;
       return 1;
     }
 
@@ -194,7 +209,9 @@
       currentStep = parseStep();
       document.getElementById('panel1').classList.toggle('active', currentStep === 1);
       document.getElementById('panel2').classList.toggle('active', currentStep === 2);
-      document.getElementById('bar').classList.toggle('is-hidden', currentStep !== 1);
+      document.getElementById('panel3').classList.toggle('active', currentStep === 3);
+      const step1or3 = currentStep === 1 || currentStep === 3;
+      document.getElementById('bar').classList.toggle('is-hidden', !step1or3);
       document.getElementById('toolbarMat').classList.toggle('visible', currentStep === 2);
       if (currentStep === 1) {
         resize2d();
@@ -206,6 +223,8 @@
           resizeMaterial();
           requestAnimationFrame(() => resizeMaterial());
         });
+      } else if (currentStep === 3) {
+        resizeTan2d();
       }
     }
 
@@ -218,6 +237,8 @@
 
     const c2d = document.getElementById('c2d');
     const ctx2d = c2d.getContext('2d');
+    const c3d = document.getElementById('c3d');
+    const ctx3d = c3d.getContext('2d');
 
     const canvasWrap = document.getElementById('canvas-wrap');
     const xvMat = document.getElementById('xvMat');
@@ -382,6 +403,227 @@
       }
     }
 
+    /** 波形用：tan の縦スケール上限（はみ出しをクリップ） */
+    const TAN_Y_CLIP = 14;
+
+    function drawCircleTan2d(ctx, x0, y0, bw, bh, Rmodel, theta, s, c) {
+      const cx = x0 + bw / 2;
+      const cy = y0 + bh / 2;
+      const r = Math.min(bw, bh) * 0.36;
+      ctx.strokeStyle = '#2a3548';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0, y0, bw, bh);
+
+      ctx.strokeStyle = '#8b95a8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x0 + 8, cy);
+      ctx.lineTo(x0 + bw - 8, cy);
+      ctx.moveTo(cx, y0 + 8);
+      ctx.lineTo(cx, y0 + bh - 8);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#3a5a80';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TWO_PI);
+      ctx.stroke();
+
+      const px = cx + c * r;
+      const py = cy - s * r;
+
+      const xVert = cx + (c >= 0 ? r : -r);
+      ctx.strokeStyle = '#556688';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xVert, y0 + 10);
+      ctx.lineTo(xVert, y0 + bh - 10);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = '#8899aa';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+
+      const cosEps = 1e-4;
+      if (Math.abs(c) > cosEps) {
+        const u = r / Math.abs(c);
+        const qx = cx + u * c;
+        const qy = cy - u * s;
+        ctx.strokeStyle = '#ff9944';
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(qx, qy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        ctx.fillStyle = '#ffcc66';
+        ctx.beginPath();
+        ctx.arc(qx, qy, 6, 0, TWO_PI);
+        ctx.fill();
+        ctx.strokeStyle = '#664422';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#ffcc44';
+      ctx.beginPath();
+      ctx.arc(px, py, 7, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = '#664400';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#a8b4c8';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`cos θ = ${c.toFixed(3)}`, x0 + 10, y0 + 22);
+      ctx.fillText(`sin θ = ${s.toFixed(3)}`, x0 + 10, y0 + 38);
+      if (Math.abs(c) > cosEps) {
+        const tanV = s / c;
+        ctx.fillText(`tan θ = sin θ / cos θ = ${tanV.toFixed(3)}`, x0 + 10, y0 + 54);
+      } else {
+        ctx.fillText('tan θ：cos θ ≈ 0（漸近）', x0 + 10, y0 + 54);
+      }
+      ctx.fillText('θ', cx + r * 0.35, cy - r * 0.35);
+    }
+
+    function drawWaveTan2d(ctx, x0, y0, bw, bh, Rmodel, theta) {
+      ctx.strokeStyle = '#2a3548';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0, y0, bw, bh);
+
+      const padX = 36;
+      const padY = 28;
+      const plotW = bw - padX - 14;
+      const plotH = bh - padY - 22;
+      const px0 = x0 + padX;
+      const py0 = y0 + padY;
+
+      const xMin = 0;
+      const xMax = SLIDER_MAX;
+      const xs = (x) => px0 + ((x - xMin) / (xMax - xMin)) * plotW;
+      const yMid = py0 + plotH / 2;
+      const amp = Math.min(plotH * 0.42, Rmodel * (plotH / (Rmodel * 4)));
+      const yFromTan = (tanRaw) => {
+        const cl = Math.max(-TAN_Y_CLIP, Math.min(TAN_Y_CLIP, tanRaw));
+        return yMid - cl * amp;
+      };
+
+      ctx.strokeStyle = '#8b95a8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px0, yMid);
+      ctx.lineTo(px0 + plotW, yMid);
+      ctx.stroke();
+
+      const asymptotes = [];
+      let k = 0;
+      while (true) {
+        const a = Math.PI / 2 + k * Math.PI;
+        if (a > xMax + 0.01) break;
+        if (a >= xMin - 0.01) asymptotes.push(a);
+        k++;
+      }
+
+      ctx.strokeStyle = '#3a4558';
+      ctx.setLineDash([3, 6]);
+      ctx.lineWidth = 1;
+      for (const ax of asymptotes) {
+        const xv = xs(ax);
+        ctx.beginPath();
+        ctx.moveTo(xv, py0);
+        ctx.lineTo(xv, py0 + plotH);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = '#ffaa44';
+      ctx.lineWidth = 2;
+      const steps = 900;
+      let penDown = false;
+      const flushTanStroke = () => {
+        if (penDown) {
+          ctx.stroke();
+          penDown = false;
+        }
+      };
+      for (let i = 0; i <= steps; i++) {
+        const t = (i / steps) * xMax;
+        const co = Math.cos(t);
+        if (Math.abs(co) < 0.025) {
+          flushTanStroke();
+          continue;
+        }
+        const tanRaw = Math.sin(t) / co;
+        if (!Number.isFinite(tanRaw)) {
+          flushTanStroke();
+          continue;
+        }
+        const xv = xs(t);
+        const yv = yFromTan(tanRaw);
+        if (!penDown) {
+          ctx.beginPath();
+          ctx.moveTo(xv, yv);
+          penDown = true;
+        } else {
+          ctx.lineTo(xv, yv);
+        }
+      }
+      flushTanStroke();
+
+      const co0 = Math.cos(theta);
+      if (Math.abs(co0) > 1e-4) {
+        const tanPt = Math.sin(theta) / co0;
+        if (Number.isFinite(tanPt) && Math.abs(tanPt) <= TAN_Y_CLIP) {
+          const tx = xs(theta);
+          const ty = yFromTan(tanPt);
+          ctx.fillStyle = '#ff66aa';
+          ctx.beginPath();
+          ctx.arc(tx, ty, 8, 0, TWO_PI);
+          ctx.fill();
+          ctx.strokeStyle = '#662244';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
+      ctx.fillStyle = '#a8b4c8';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('y = R tan θ（θ は横軸＝角・破線は漸近線）', x0 + bw / 2, y0 + 16);
+    }
+
+    function drawTan2d() {
+      const w = c3d.clientWidth;
+      const h = c3d.clientHeight;
+      const m = getMode();
+      const showC = m === MODE_CIRCLE || m === MODE_BOTH;
+      const showW = m === MODE_WAVE || m === MODE_BOTH;
+      const s = Math.sin(theta);
+      const c = Math.cos(theta);
+      const Rmodel = 2.2;
+
+      ctx3d.fillStyle = '#121826';
+      ctx3d.fillRect(0, 0, w, h);
+
+      const pad = 12;
+      if (showC && showW) {
+        const split = w * 0.42;
+        drawCircleTan2d(ctx3d, pad, pad, split - pad * 2, h - pad * 2, Rmodel, theta, s, c);
+        drawWaveTan2d(ctx3d, split + pad, pad, w - split - pad * 2, h - pad * 2, Rmodel, theta);
+      } else if (showC) {
+        drawCircleTan2d(ctx3d, pad, pad, w - pad * 2, h - pad * 2, Rmodel, theta, s, c);
+      } else if (showW) {
+        drawWaveTan2d(ctx3d, pad, pad, w - pad * 2, h - pad * 2, Rmodel, theta);
+      }
+    }
+
     function resize2d() {
       const wrap = document.getElementById('wrap2d');
       const r = wrap.getBoundingClientRect();
@@ -394,6 +636,20 @@
       c2d.style.height = `${Math.max(260, ch)}px`;
       ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
       draw2d();
+    }
+
+    function resizeTan2d() {
+      const wrap = document.getElementById('wrap2dTan');
+      const r = wrap.getBoundingClientRect();
+      const dpr = Math.min(devicePixelRatio, 2);
+      const cw = Math.floor(Math.min(r.width - 8, 960));
+      const ch = Math.floor(Math.min(window.innerHeight * 0.72, 640));
+      c3d.width = Math.max(360, cw) * dpr;
+      c3d.height = Math.max(260, ch) * dpr;
+      c3d.style.width = `${Math.max(360, cw)}px`;
+      c3d.style.height = `${Math.max(260, ch)}px`;
+      ctx3d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawTan2d();
     }
 
     let threeReady = false;
@@ -464,6 +720,7 @@
 
     function applyModeVisibility() {
       if (currentStep === 1) draw2d();
+      else if (currentStep === 3) drawTan2d();
     }
 
     elRadios.forEach((r) => r.addEventListener('change', applyModeVisibility));
@@ -509,6 +766,7 @@
 
     window.addEventListener('resize', () => {
       if (currentStep === 1) resize2d();
+      else if (currentStep === 3) resizeTan2d();
       else resizeMaterial();
     });
 
@@ -523,7 +781,7 @@
       requestAnimationFrame(animate);
       tickMaterial();
       const dt = clock.getDelta();
-      if (currentStep === 1 && elAuto.checked && playing) {
+      if ((currentStep === 1 || currentStep === 3) && elAuto.checked && playing) {
         theta += dt * speed * 1.1;
         if (theta > SLIDER_MAX) theta -= SLIDER_MAX;
         if (theta < 0) theta = 0;
@@ -532,6 +790,8 @@
 
       if (currentStep === 1) {
         draw2d();
+      } else if (currentStep === 3) {
+        drawTan2d();
       } else if (currentStep === 2 && threeReady) {
         controls.update();
         renderer.render(scene, camera);
