@@ -51,6 +51,13 @@
       color: #9ad1ff;
     }
 
+    #angleLabel {
+      min-width: 84px;
+      font-weight: 700;
+      color: #ffd88f;
+      text-align: right;
+    }
+
     #scene {
       width: 100%;
       height: calc(100vh - 92px);
@@ -65,6 +72,7 @@
       <div class="row">
         <input id="sunSlider" type="range" min="0" max="100" value="50">
         <span id="timeLabel">昼</span>
+        <span id="angleLabel">0.0°</span>
       </div>
     </div>
     <canvas id="scene"></canvas>
@@ -86,6 +94,7 @@
       const canvas = document.getElementById("scene");
       const slider = document.getElementById("sunSlider");
       const timeLabel = document.getElementById("timeLabel");
+      const angleLabel = document.getElementById("angleLabel");
 
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -124,6 +133,54 @@
       cube.position.y = 0.7;
       scene.add(cube);
 
+      const topLightPatch = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.14, 1.14),
+        new THREE.MeshBasicMaterial({ color: 0x0f2a3f, transparent: true, opacity: 0.92 })
+      );
+      topLightPatch.rotation.x = -Math.PI / 2;
+      topLightPatch.position.set(cube.position.x, cube.position.y + 0.601, cube.position.z);
+      scene.add(topLightPatch);
+
+      const cubeTopCenter = new THREE.Vector3(cube.position.x, cube.position.y + 0.6, cube.position.z);
+      const topNormalDir = new THREE.Vector3(0, 1, 0);
+      const topNormalLength = 2.0;
+
+      const topNormalArrow = new THREE.ArrowHelper(
+        topNormalDir,
+        cubeTopCenter,
+        topNormalLength,
+        0x41ffb3,
+        0.24,
+        0.12
+      );
+      scene.add(topNormalArrow);
+
+      const normalLineEnd = cubeTopCenter.clone().addScaledVector(topNormalDir, topNormalLength);
+      const topNormalLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([cubeTopCenter, normalLineEnd]),
+        new THREE.LineBasicMaterial({ color: 0x41ffb3 })
+      );
+      scene.add(topNormalLine);
+
+      const lightVectorArrow = new THREE.ArrowHelper(
+        new THREE.Vector3(0, -1, 0),
+        new THREE.Vector3(0, 0, 0),
+        1,
+        0xff7a7a,
+        0.24,
+        0.12
+      );
+      scene.add(lightVectorArrow);
+
+      const footMarker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xff7a7a })
+      );
+      scene.add(footMarker);
+
+      const lightToTop = new THREE.Vector3();
+      const toLight = new THREE.Vector3();
+
       const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(14, 14),
         new THREE.MeshStandardMaterial({ color: 0x2a333d, roughness: 0.9, metalness: 0.0 })
@@ -159,6 +216,22 @@
         directionalLight.target.position.set(0, 0.5, 0);
         scene.add(directionalLight.target);
         lightMarker.position.copy(directionalLight.position);
+
+        lightToTop.subVectors(cubeTopCenter, directionalLight.position);
+        const lightVectorLength = lightToTop.length();
+        if (lightVectorLength > 1e-6) {
+          lightVectorArrow.position.copy(directionalLight.position);
+          lightVectorArrow.setDirection(lightToTop.clone().normalize());
+          lightVectorArrow.setLength(lightVectorLength, 0.24, 0.12);
+        }
+        footMarker.position.copy(cubeTopCenter);
+
+        toLight.subVectors(directionalLight.position, cubeTopCenter).normalize();
+        const ndotl = THREE.MathUtils.clamp(topNormalDir.dot(toLight), -1, 1);
+        const angleDeg = THREE.MathUtils.radToDeg(Math.acos(ndotl));
+        const litStrength = Math.max(ndotl, 0);
+        angleLabel.textContent = `${angleDeg.toFixed(1)}°`;
+        topLightPatch.material.color.setHSL(0.15, 0.95, 0.12 + litStrength * 0.58);
 
         if (y <= 0) {
           timeLabel.textContent = "夜";
