@@ -35,14 +35,45 @@
       font-weight: 600;
     }
 
+    .step-tabs {
+      display: flex;
+      gap: 8px;
+    }
+
+    .step-btn {
+      border: 1px solid #2b3a4d;
+      background: #172433;
+      color: #d5e4f5;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .step-btn.active {
+      border-color: #5cb7ff;
+      background: #1f3850;
+      color: #9ed6ff;
+    }
+
     .row {
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .row.is-hidden {
+      display: none;
     }
 
     #sunSlider {
       width: min(520px, 70vw);
+    }
+
+    #tiltXSlider,
+    #tiltZSlider {
+      width: min(220px, 38vw);
     }
 
     #timeLabel {
@@ -68,11 +99,20 @@
 <body>
   <div id="app">
     <div class="controls">
-      <label for="sunSlider">ステップ①: 朝 → 昼 → 夜（ライト回転）</label>
+      <div class="step-tabs">
+        <button id="step1Btn" class="step-btn active" type="button">ステップ①</button>
+        <button id="step2Btn" class="step-btn" type="button">ステップ②</button>
+      </div>
       <div class="row">
         <input id="sunSlider" type="range" min="0" max="100" value="50">
         <span id="timeLabel">昼</span>
         <span id="angleLabel">0.0°</span>
+      </div>
+      <div id="step2Controls" class="row is-hidden">
+        <label for="tiltXSlider">法線X傾き</label>
+        <input id="tiltXSlider" type="range" min="-60" max="60" value="0" step="1">
+        <label for="tiltZSlider">法線Z傾き</label>
+        <input id="tiltZSlider" type="range" min="-60" max="60" value="0" step="1">
       </div>
     </div>
     <canvas id="scene"></canvas>
@@ -95,6 +135,11 @@
       const slider = document.getElementById("sunSlider");
       const timeLabel = document.getElementById("timeLabel");
       const angleLabel = document.getElementById("angleLabel");
+      const step1Btn = document.getElementById("step1Btn");
+      const step2Btn = document.getElementById("step2Btn");
+      const step2Controls = document.getElementById("step2Controls");
+      const tiltXSlider = document.getElementById("tiltXSlider");
+      const tiltZSlider = document.getElementById("tiltZSlider");
 
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -109,9 +154,6 @@
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.target.set(0, 0.8, 0);
       controls.update();
-
-      const ambient = new THREE.AmbientLight(0x5f7a91, 0.35);
-      scene.add(ambient);
 
       const directionalLight = new THREE.DirectionalLight(0xfff0c7, 1.15);
       scene.add(directionalLight);
@@ -144,6 +186,7 @@
       const cubeTopCenter = new THREE.Vector3(cube.position.x, cube.position.y + 0.6, cube.position.z);
       const topNormalDir = new THREE.Vector3(0, 1, 0);
       const topNormalLength = 2.0;
+      let currentStep = 1;
 
       const topNormalArrow = new THREE.ArrowHelper(
         topNormalDir,
@@ -180,6 +223,8 @@
 
       const lightToTop = new THREE.Vector3();
       const toLight = new THREE.Vector3();
+      const tiltedNormal = new THREE.Vector3(0, 1, 0);
+      const normalEuler = new THREE.Euler(0, 0, 0, "YXZ");
 
       const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(14, 14),
@@ -199,6 +244,28 @@
         new THREE.LineBasicMaterial({ color: 0xff944d })
       );
       scene.add(horizon);
+
+      function updateStepUI() {
+        const isStep2 = currentStep === 2;
+        step1Btn.classList.toggle("active", !isStep2);
+        step2Btn.classList.toggle("active", isStep2);
+        step2Controls.classList.toggle("is-hidden", !isStep2);
+      }
+
+      function updateNormalDirection() {
+        if (currentStep === 1) {
+          topNormalDir.set(0, 1, 0);
+        } else {
+          const tiltX = THREE.MathUtils.degToRad(Number(tiltXSlider.value));
+          const tiltZ = THREE.MathUtils.degToRad(Number(tiltZSlider.value));
+          normalEuler.set(tiltX, 0, tiltZ);
+          tiltedNormal.set(0, 1, 0).applyEuler(normalEuler).normalize();
+          topNormalDir.copy(tiltedNormal);
+        }
+        topNormalArrow.setDirection(topNormalDir);
+        normalLineEnd.copy(cubeTopCenter).addScaledVector(topNormalDir, topNormalLength);
+        topNormalLine.geometry.setFromPoints([cubeTopCenter, normalLineEnd]);
+      }
 
       function updateSunFromSlider() {
         const t = Number(slider.value) / 100;
@@ -226,6 +293,7 @@
         }
         footMarker.position.copy(cubeTopCenter);
 
+        updateNormalDirection();
         toLight.subVectors(directionalLight.position, cubeTopCenter).normalize();
         const ndotl = THREE.MathUtils.clamp(topNormalDir.dot(toLight), -1, 1);
         const angleDeg = THREE.MathUtils.radToDeg(Math.acos(ndotl));
@@ -242,7 +310,22 @@
         }
       }
 
+      step1Btn.addEventListener("click", () => {
+        currentStep = 1;
+        updateStepUI();
+        updateSunFromSlider();
+      });
+
+      step2Btn.addEventListener("click", () => {
+        currentStep = 2;
+        updateStepUI();
+        updateSunFromSlider();
+      });
+
       slider.addEventListener("input", updateSunFromSlider);
+      tiltXSlider.addEventListener("input", updateSunFromSlider);
+      tiltZSlider.addEventListener("input", updateSunFromSlider);
+      updateStepUI();
       updateSunFromSlider();
 
       function resizeRenderer() {
