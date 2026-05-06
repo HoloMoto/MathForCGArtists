@@ -170,6 +170,11 @@
       return f < 0 ? 0 : f;
     }
 
+    /** ceil（時間以上の最小の整数） */
+    function ceilPart(t) {
+      return Math.ceil(t - 1e-9);
+    }
+
     function layoutTop(w, h) {
       const plotW = w - pad.l - pad.r;
       const plotH = (h - pad.t - pad.b) * SPLIT;
@@ -202,6 +207,14 @@
       return {
         sx: left + (px / R) * square,
         sy: top + (1 - py01) * bandH
+      };
+    }
+
+    function toScreenBottomRange(px, py, w, h) {
+      const { square, left, top, botPlotH } = layoutBottom(w, h);
+      return {
+        sx: left + (px / R) * square,
+        sy: top + (1 - py / R) * botPlotH
       };
     }
 
@@ -349,20 +362,100 @@
       ctx.setLineDash([]);
     }
 
+    function drawBottomAxesAndCeil(w, h, tNow) {
+      const { left, top, square } = layoutBottom(w, h);
+
+      ctx.strokeStyle = '#2a4050';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const vx = (i / 10) * R;
+        const a = toScreenBottomRange(vx, 0, w, h);
+        const b = toScreenBottomRange(vx, R, w, h);
+        ctx.beginPath();
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+        ctx.stroke();
+      }
+      for (let j = 0; j <= 10; j++) {
+        const vy = (j / 10) * R;
+        const c = toScreenBottomRange(0, vy, w, h);
+        const d = toScreenBottomRange(R, vy, w, h);
+        ctx.beginPath();
+        ctx.moveTo(c.sx, c.sy);
+        ctx.lineTo(d.sx, d.sy);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = '#8b95a8';
+      ctx.lineWidth = 2;
+      const o0 = toScreenBottomRange(0, 0, w, h);
+      const ox = toScreenBottomRange(R, 0, w, h);
+      const oy = toScreenBottomRange(0, R, w, h);
+      ctx.beginPath();
+      ctx.moveTo(o0.sx, o0.sy);
+      ctx.lineTo(ox.sx, ox.sy);
+      ctx.moveTo(o0.sx, o0.sy);
+      ctx.lineTo(oy.sx, oy.sy);
+      ctx.stroke();
+
+      ctx.fillStyle = '#a8b4c8';
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('時間', left + square + 14, o0.sy + 4);
+      ctx.textAlign = 'right';
+      ctx.fillText('ceil(t)', o0.sx - 6, top - 6);
+
+      ctx.strokeStyle = '#8cff8c';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      const pOrigin = toScreenBottomRange(0, 0, w, h);
+      ctx.moveTo(pOrigin.sx, pOrigin.sy);
+      for (let k = 0; k < R; k++) {
+        const up = toScreenBottomRange(k, k + 1, w, h);
+        const right = toScreenBottomRange(k + 1, k + 1, w, h);
+        ctx.lineTo(up.sx, up.sy);       // 垂直ジャンプ
+        ctx.lineTo(right.sx, right.sy); // 水平区間
+      }
+      ctx.stroke();
+
+      const cNow = ceilPart(tNow);
+      const q = toScreenBottomRange(tNow, cNow, w, h);
+      ctx.fillStyle = '#ffcc44';
+      ctx.beginPath();
+      ctx.arc(q.sx, q.sy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#663300';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.strokeStyle = '#4dd4ff';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.2;
+      const qTop = toScreenTop(tNow, tNow, w, h);
+      const qBot = toScreenBottomRange(tNow, cNow, w, h);
+      ctx.beginPath();
+      ctx.moveTo(qTop.sx, qTop.sy);
+      ctx.lineTo(qBot.sx, qBot.sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     function formatReadout(t) {
       const w = wholePart(t);
       const f = overflowPart(t);
+      const c = ceilPart(t);
       let pulse = Math.round(f * 10);
       if (pulse >= 10) pulse = 0;
       return {
-        line1: `時間 ${t.toFixed(1)}　｜　整数部 ${w}　｜　小数部 ${f.toFixed(1)}　｜　0.1の位 ${pulse}`
+        saw: `時間 ${t.toFixed(1)}　｜　整数部 ${w}　｜　小数部 ${f.toFixed(1)}　｜　0.1の位 ${pulse}`,
+        ceil: `時間 ${t.toFixed(1)}　｜　ceil(t) ${c}　（時間以上の最小の整数）`
       };
     }
 
     function drawAll() {
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
-      const activeSlider = currentStep === 1 ? timeSlider : timeSliderPlay;
+      const activeSlider = currentStep === 2 ? timeSliderPlay : timeSlider;
       const t = sliderToTime(activeSlider);
 
       ctx.fillStyle = '#121826';
@@ -372,19 +465,24 @@
       drawAxesTop(w, h);
       drawDiagonal(w, h);
       drawDotTop(t, w, h);
-      drawBottomAxesAndSaw(w, h, t);
+      if (currentStep === 3) {
+        drawBottomAxesAndCeil(w, h, t);
+      } else {
+        drawBottomAxesAndSaw(w, h, t);
+      }
 
       const msg = formatReadout(t);
-      if (currentStep === 1) {
-        timeOut.textContent = msg.line1;
+      if (currentStep === 2) {
+        timeOutPlay.textContent = msg.saw;
       } else {
-        timeOutPlay.textContent = msg.line1;
+        timeOut.textContent = currentStep === 3 ? msg.ceil : msg.saw;
       }
     }
 
     function parseStep() {
       const raw = (location.hash || '#step-1').replace(/^#/, '').toLowerCase();
       if (raw === '2' || raw === 'step2' || raw === 'step-2') return 2;
+      if (raw === '3' || raw === 'step3' || raw === 'step-3') return 3;
       return 1;
     }
 
@@ -393,16 +491,19 @@
         history.replaceState(null, '', '#step-1');
       }
       currentStep = parseStep();
-      toolbarMain.classList.toggle('is-hidden', currentStep !== 1);
+      toolbarMain.classList.toggle('is-hidden', currentStep === 2);
       toolbarPlay.classList.toggle('visible', currentStep === 2);
 
       if (currentStep === 1) {
         document.title = 'のこぎり波 — 手動で時間を動かす';
         timeSlider.value = timeSliderPlay.value;
-      } else {
+      } else if (currentStep === 2) {
         document.title = 'のこぎり波 — 時間を自動で 0→10';
         timeSliderPlay.value = timeSlider.value;
         playRunning = false;
+      } else {
+        document.title = 'のこぎり波 — ceil(t) の階段';
+        timeSlider.value = timeSliderPlay.value;
       }
       drawAll();
     }
@@ -436,7 +537,7 @@
     }
 
     timeSlider.addEventListener('input', () => {
-      if (currentStep === 1) drawAll();
+      if (currentStep !== 2) drawAll();
     });
 
     btnStart.addEventListener('click', () => {
@@ -449,10 +550,10 @@
     document.querySelectorAll('.sample-row button[data-t]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const v = btn.getAttribute('data-t');
-        if (currentStep === 1) {
-          timeSlider.value = v;
-        } else {
+        if (currentStep === 2) {
           timeSliderPlay.value = v;
+        } else {
+          timeSlider.value = v;
         }
         drawAll();
       });
