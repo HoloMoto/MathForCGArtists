@@ -194,6 +194,15 @@
       return { square, left, top, bandH, botPlotH };
     }
 
+    function layoutBottomFull(w, h) {
+      const { square, left } = layoutTop(w, h);
+      const totalPlotH = h - pad.t - pad.b;
+      const topPlotH = totalPlotH * SPLIT;
+      const botPlotH = totalPlotH - topPlotH - 8;
+      const top = pad.t + topPlotH + 8;
+      return { square, left, top, botPlotH };
+    }
+
     function toScreenTop(px, py, w, h) {
       const { square, left, top } = layoutTop(w, h);
       return {
@@ -211,11 +220,32 @@
     }
 
     function toScreenBottomRange(px, py, w, h) {
-      const { square, left, top, botPlotH } = layoutBottom(w, h);
+      const { square, left, top, botPlotH } = layoutBottomFull(w, h);
       return {
         sx: left + (px / R) * square,
         sy: top + (1 - py / R) * botPlotH
       };
+    }
+
+    function mixColor(c0, c1, t01) {
+      const t = Math.min(Math.max(t01, 0), 1);
+      return [
+        Math.round(c0[0] + (c1[0] - c0[0]) * t),
+        Math.round(c0[1] + (c1[1] - c0[1]) * t),
+        Math.round(c0[2] + (c1[2] - c0[2]) * t)
+      ];
+    }
+
+    function rgbCss(rgb) {
+      return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    }
+
+    function materialMixSaw(t) {
+      return overflowPart(t);
+    }
+
+    function materialMixCeil(t) {
+      return t*2 / R;
     }
 
     function drawGridTop(w, h) {
@@ -440,6 +470,73 @@
       ctx.setLineDash([]);
     }
 
+    function drawBottomMaterialPreview(w, h, tNow, mode) {
+      const { left, top, square, botPlotH } = layoutBottomFull(w, h);
+      const panelX = left;
+      const panelY = top;
+      const panelW = square;
+      const panelH = botPlotH;
+      const padIn = 10;
+
+      const cA = [73, 167, 255];
+      const cB = [255, 112, 168];
+      const mix = mode === 'ceil' ? materialMixCeil(tNow) : materialMixSaw(tNow);
+      const matColor = mixColor(cA, cB, mix);
+
+      ctx.fillStyle = '#101726';
+      ctx.fillRect(panelX, panelY, panelW, panelH);
+      ctx.strokeStyle = '#2a4050';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelW - 1, panelH - 1);
+
+      const swY = panelY + padIn;
+      const swH = 20;
+      const n = 11;
+      for (let i = 0; i < n; i++) {
+        const u = i / (n - 1);
+        const col = mixColor(cA, cB, u);
+        const x0 = panelX + padIn + ((panelW - padIn * 2) * i) / n;
+        const x1 = panelX + padIn + ((panelW - padIn * 2) * (i + 1)) / n;
+        ctx.fillStyle = rgbCss(col);
+        ctx.fillRect(x0, swY, x1 - x0 + 1, swH);
+      }
+      ctx.strokeStyle = '#31465f';
+      ctx.strokeRect(panelX + padIn + 0.5, swY + 0.5, panelW - padIn * 2 - 1, swH - 1);
+
+      const labelY = panelY + panelH - 14;
+      const sphereTop = swY + swH + 14;
+      const sphereBottom = labelY - 12;
+      const availH = Math.max(24, sphereBottom - sphereTop);
+      const availW = Math.max(24, panelW - padIn * 2);
+      const radius = Math.min(availH * 0.5, availW * 0.26);
+      const cx = panelX + panelW * 0.5;
+      const cy = sphereTop + availH * 0.5;
+      if (radius >= 6) {
+        const grad = ctx.createRadialGradient(
+          cx - radius * 0.35, cy - radius * 0.35, radius * 0.25,
+          cx, cy, radius * 1.05
+        );
+        grad.addColorStop(0, 'rgba(255,255,255,0.92)');
+        grad.addColorStop(0.28, rgbCss(mixColor(matColor, [255, 255, 255], 0.25)));
+        grad.addColorStop(1, rgbCss(mixColor(matColor, [0, 0, 0], 0.45)));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#a8b4c8';
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      const title = mode === 'ceil' ? 'ceil(t) 適用マテリアル' : '小数部 fract(t) 適用マテリアル';
+      ctx.fillText(title, panelX + padIn, labelY);
+      ctx.textAlign = 'right';
+      ctx.fillText(`mix=${mix.toFixed(2)}`, panelX + panelW - padIn, labelY);
+    }
+
     function formatReadout(t) {
       const w = wholePart(t);
       const f = overflowPart(t);
@@ -448,7 +545,9 @@
       if (pulse >= 10) pulse = 0;
       return {
         saw: `時間 ${t.toFixed(1)}　｜　整数部 ${w}　｜　小数部 ${f.toFixed(1)}　｜　0.1の位 ${pulse}`,
-        ceil: `時間 ${t.toFixed(1)}　｜　ceil(t) ${c}　（時間以上の最小の整数）`
+        ceil: `時間 ${t.toFixed(1)}　｜　ceil(t) ${c}　（時間以上の最小の整数）`,
+        matSaw: `時間 ${t.toFixed(1)}　｜　fract(t)=${f.toFixed(2)} を色のmix係数に適用`,
+        matCeil: `時間 ${t.toFixed(1)}　｜　t/10=${(t / R).toFixed(2)} を色のmix係数に適用`
       };
     }
 
@@ -467,6 +566,10 @@
       drawDotTop(t, w, h);
       if (currentStep === 3) {
         drawBottomAxesAndCeil(w, h, t);
+      } else if (currentStep === 4) {
+        drawBottomMaterialPreview(w, h, t, 'saw');
+      } else if (currentStep === 5) {
+        drawBottomMaterialPreview(w, h, t, 'ceil');
       } else {
         drawBottomAxesAndSaw(w, h, t);
       }
@@ -475,7 +578,10 @@
       if (currentStep === 2) {
         timeOutPlay.textContent = msg.saw;
       } else {
-        timeOut.textContent = currentStep === 3 ? msg.ceil : msg.saw;
+        if (currentStep === 3) timeOut.textContent = msg.ceil;
+        else if (currentStep === 4) timeOut.textContent = msg.matSaw;
+        else if (currentStep === 5) timeOut.textContent = msg.matCeil;
+        else timeOut.textContent = msg.saw;
       }
     }
 
@@ -483,6 +589,8 @@
       const raw = (location.hash || '#step-1').replace(/^#/, '').toLowerCase();
       if (raw === '2' || raw === 'step2' || raw === 'step-2') return 2;
       if (raw === '3' || raw === 'step3' || raw === 'step-3') return 3;
+      if (raw === '4' || raw === 'step4' || raw === 'step-4') return 4;
+      if (raw === '5' || raw === 'step5' || raw === 'step-5') return 5;
       return 1;
     }
 
@@ -501,8 +609,14 @@
         document.title = 'のこぎり波 — 時間を自動で 0→10';
         timeSliderPlay.value = timeSlider.value;
         playRunning = false;
-      } else {
+      } else if (currentStep === 3) {
         document.title = 'のこぎり波 — ceil(t) の階段';
+        timeSlider.value = timeSliderPlay.value;
+      } else if (currentStep === 4) {
+        document.title = 'のこぎり波 — fract(t) で色を変える';
+        timeSlider.value = timeSliderPlay.value;
+      } else {
+        document.title = 'のこぎり波 — ceil(t) で色を変える';
         timeSlider.value = timeSliderPlay.value;
       }
       drawAll();

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Lighting Step 1</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #101418;
+      color: #eef2f7;
+    }
+
+    #app {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+
+    .controls {
+      padding: 14px 18px;
+      background: #171d24;
+      border-bottom: 1px solid #26303d;
+      display: grid;
+      gap: 8px;
+    }
+
+    .controls label {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #sunSlider {
+      width: min(520px, 70vw);
+    }
+
+    #timeLabel {
+      min-width: 120px;
+      font-weight: 700;
+      color: #9ad1ff;
+    }
+
+    #scene {
+      width: 100%;
+      height: calc(100vh - 92px);
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="controls">
+      <label for="sunSlider">ステップ①: 朝 → 昼 → 夜（ライト回転）</label>
+      <div class="row">
+        <input id="sunSlider" type="range" min="0" max="100" value="50">
+        <span id="timeLabel">昼</span>
+      </div>
+    </div>
+    <canvas id="scene"></canvas>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    function initScene() {
+      const canvas = document.getElementById("scene");
+      const slider = document.getElementById("sunSlider");
+      const timeLabel = document.getElementById("timeLabel");
+
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0f1720);
+
+      const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+      camera.position.set(4, 3.5, 6);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.8, 0);
+      controls.update();
+
+      const ambient = new THREE.AmbientLight(0x5f7a91, 0.35);
+      scene.add(ambient);
+
+      const directionalLight = new THREE.DirectionalLight(0xfff0c7, 1.15);
+      scene.add(directionalLight);
+
+      const lightMarker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffd56a })
+      );
+      scene.add(lightMarker);
+
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 1.2, 1.2),
+        new THREE.MeshStandardMaterial({
+          color: 0x7cc0ff,
+          roughness: 0.45,
+          metalness: 0.05
+        })
+      );
+      cube.position.y = 0.7;
+      scene.add(cube);
+
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 14),
+        new THREE.MeshStandardMaterial({ color: 0x2a333d, roughness: 0.9, metalness: 0.0 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
+
+      scene.add(new THREE.GridHelper(14, 14, 0x5c7085, 0x2b3a49));
+      scene.add(new THREE.AxesHelper(2.3));
+
+      const horizon = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-4, 0, 0),
+          new THREE.Vector3(4, 0, 0)
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xff944d })
+      );
+      scene.add(horizon);
+
+      function updateSunFromSlider() {
+        const t = Number(slider.value) / 100;
+        // 朝 -> 昼(キューブ真上) -> 夜 となるよう、キューブを通る鉛直面で回転
+        const startAngle = -Math.PI * 0.25;
+        const endAngle = Math.PI * 1.25;
+        const angle = startAngle + t * (endAngle - startAngle);
+        const radius = 4.5;
+
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        const z = 0.0;
+
+        directionalLight.position.set(x, y, z);
+        directionalLight.target.position.set(0, 0.5, 0);
+        scene.add(directionalLight.target);
+        lightMarker.position.copy(directionalLight.position);
+
+        if (y <= 0) {
+          timeLabel.textContent = "夜";
+        } else if (angle < Math.PI * 0.4) {
+          timeLabel.textContent = "朝";
+        } else {
+          timeLabel.textContent = "昼";
+        }
+      }
+
+      slider.addEventListener("input", updateSunFromSlider);
+      updateSunFromSlider();
+
+      function resizeRenderer() {
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        if (canvas.width !== width || canvas.height !== height) {
+          renderer.setSize(width, height, false);
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+        }
+      }
+
+      function animate() {
+        resizeRenderer();
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    }
+
+    initScene();
+  </script>
+</body>
+</html>
